@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaflet Map with Rectangle Drawing</title>
+
+    <!-- Leaflet CSS -->
+    <!--link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /-->
+    <link rel="stylesheet" href="lib/leaflet.css" />
+
+
+    <!-- Leaflet Draw CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #control-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            min-width: 250px;
+        }
+
+        #control-panel label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        #control-panel input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+
+        #control-panel input[type="text"]:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+        }
+
+        #info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 3px;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .info-label {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="control-panel">
+        <label for="tableName">Table Name:</label>
+        <input type="text" id="tableName" placeholder="Enter table name...">
+
+        <div id="info">
+            <div class="info-label">Rectangle Info:</div>
+            <div id="bbox-info">No rectangle drawn yet</div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <!--script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script -->
+    <script src="lib/leaflet.js"></script>
+	<script type="module" src="./leaflet osm spatialite.js">
+		import { getOsmData } from "./leaflet osm spatialite.js";
+		window.getOsmData = getOsmData;
+	</script> <!-- Leaflet.js + SpatiaLite creation demo -->
+
+    <!-- Leaflet Draw JS -->
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+    <script>
+        // Initialize map centered on world view
+        const map = L.map('map').setView([20, 0], 2);
+
+        // Define layer sources
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19,
+            name: 'OpenStreetMap'
+        });
+
+        const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap',
+            maxZoom: 14,
+            name: 'OpenTopoMap'
+        });
+
+        // Add OSM as default layer
+        osmLayer.addTo(map);
+
+        // Layer control
+        const baseLayers = {
+            'OpenStreetMap': osmLayer,
+            'OpenTopoMap': topoLayer
+        };
+
+        L.control.layers(baseLayers).addTo(map);
+
+        // Initialize Leaflet Draw
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        const drawControl = new L.Control.Draw({
+            position: 'topright',
+            draw: {
+                polygon: false,
+                polyline: false,
+                circlemarker: false,
+                marker: false,
+                circle: false,
+                rectangle: true
+            },
+            edit: {
+                featureGroup: drawnItems,
+                remove: true
+            }
+        });
+        map.addControl(drawControl);
+
+        // Store the drawn rectangle
+        let drawnRectangle = null;
+
+        // Handle draw events
+        map.on('draw:created', function(e) {
+            const layer = e.layer;
+
+            // Remove previous rectangle if exists
+            if (drawnRectangle) {
+                drawnItems.removeLayer(drawnRectangle);
+            }
+
+            drawnRectangle = layer;
+            drawnItems.addLayer(layer);
+
+            // Get the bounding box
+            const bounds = layer.getBounds();
+            const drawed_bbox = {
+                north: bounds.getNorth(),
+                south: bounds.getSouth(),
+                east: bounds.getEast(),
+                west: bounds.getWest(),
+                bounds: bounds
+            };
+
+            // Log to console
+            console.log('drawed_bbox', drawed_bbox);
+
+            // Display in UI
+            updateBboxInfo(drawed_bbox);
+        });
+
+        // Handle edit events
+        map.on('draw:edited', function(e) {
+            const layers = e.layers;
+            layers.eachLayer(function(layer) {
+                if (layer === drawnRectangle) {
+                    const bounds = layer.getBounds();
+                    const drawed_bbox = {
+                        north: bounds.getNorth(),
+                        south: bounds.getSouth(),
+                        east: bounds.getEast(),
+                        west: bounds.getWest(),
+                        bounds: bounds
+                    };
+
+                    console.log('drawed_bbox (edited)', drawed_bbox);
+                    updateBboxInfo(drawed_bbox);
+                }
+            });
+        });
+
+        // Handle delete events
+        map.on('draw:deleted', function(e) {
+            drawnRectangle = null;
+            document.getElementById('bbox-info').innerHTML = 'No rectangle drawn yet';
+            console.log('Rectangle deleted');
+        });
+
+        // Update bbox info display
+        function updateBboxInfo(bbox) {
+            const info = `
+                <strong>North:</strong> ${bbox.north.toFixed(4)}<br>
+                <strong>South:</strong> ${bbox.south.toFixed(4)}<br>
+                <strong>East:</strong> ${bbox.east.toFixed(4)}<br>
+                <strong>West:</strong> ${bbox.west.toFixed(4)}
+            `;
+            document.getElementById('bbox-info').innerHTML = info;
+        }
+
+        // Handle table name input
+        document.getElementById('tableName').addEventListener('change', function(e) {
+            const tableName = e.target.value;
+            console.log('Table Name:', tableName);
+
+            if (drawnRectangle) {
+                const bounds = drawnRectangle.getBounds();
+                const drawed_bbox = {
+                    tableName: tableName,
+                    north: bounds.getNorth(),
+                    south: bounds.getSouth(),
+                    east: bounds.getEast(),
+                    west: bounds.getWest()
+                };
+                console.log('Complete data:', drawed_bbox);
+				getOsmData(`https://www.openstreetmap.org/api/0.6/map.json?bbox=${bbox.east},${bbox.south},${bbox.west},${bbox.north}`, tableName);
+            }
+        });
+    </script>
+</body>
+</html>
